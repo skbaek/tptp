@@ -989,32 +989,51 @@ pub fn formula_data<'a, E: ParseError<&'a [u8]>>(
     )(x)
 }
 
+pub fn general_data_aux<'a, E: ParseError<&'a [u8]>>(
+    x: &'a [u8],
+) -> ParseResult<GeneralData, E> {
+  let (y,a) = atomic_word(x)?;
+  let r: ParseResult<GeneralTerms, E> = 
+    delimited(
+      tuple((ignored, tag("("), ignored)),
+      general_terms,
+      tuple((ignored, tag(")"))),
+    )(y);
+  match r {
+    Ok((z,t)) => Ok((z,GeneralData::Function(Box::new(GeneralFunction {word:a,terms:t})))),
+    Err(_) => Ok((y,GeneralData::Atomic(a)))
+  }
+}
+
 pub fn general_data<'a, E: ParseError<&'a [u8]>>(
     x: &'a [u8],
 ) -> ParseResult<GeneralData, E> {
     alt((
-        map(general_function, |f| GeneralData::Function(Box::new(f))),
-        map(atomic_word, GeneralData::Atomic),
+        general_data_aux,
         map(variable, GeneralData::Variable),
         map(number, GeneralData::Number),
         map(distinct_object, GeneralData::DistinctObject),
-        map(formula_data, |f| GeneralData::Formula(Box::new(f))),
+        map(formula_data, |f| GeneralData::Formula(Box::new(f)))
     ))(x)
+}
+
+pub fn general_term_aux<'a, E: ParseError<&'a [u8]>>(
+    x: &'a [u8],
+) -> ParseResult<GeneralTerm, E> {
+  let (y,d) = general_data(x)?;
+  let r: ParseResult<GeneralTerm, E> = preceded(tuple((ignored, tag(":"), ignored)), general_term)(y);
+  match r {
+    Ok((z,t)) => Ok((z,GeneralTerm::Colon(Box::new(d),Box::new(t)))),
+    Err(_) => Ok((y,GeneralTerm::Data(Box::new(d))))
+  }
 }
 
 pub fn general_term<'a, E: ParseError<&'a [u8]>>(
     x: &'a [u8],
 ) -> ParseResult<GeneralTerm, E> {
     alt((
-        map(general_list, GeneralTerm::List),
-        map(
-            pair(
-                general_data,
-                preceded(tuple((ignored, tag(":"), ignored)), general_term),
-            ),
-            |(d, f)| GeneralTerm::Colon(Box::new(d), Box::new(f)),
-        ),
-        map(general_data, |d| GeneralTerm::Data(Box::new(d))),
+        general_term_aux,
+        map(general_list, GeneralTerm::List)
     ))(x)
 }
 
